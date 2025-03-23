@@ -20,8 +20,7 @@ WifiStation::WifiStation() {
 
 void WifiStation::init() {
     esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
-        ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
@@ -72,32 +71,32 @@ esp_err_t WifiStation::connect(const char *ssid,
     return ESP_OK;
 }
 
-esp_err_t WifiStation::connect() {
+esp_err_t WifiStation::connect(uart_port_t uart_num) {
     wifi_config_t wifi_cfg;
     esp_wifi_get_config(WIFI_IF_STA, &wifi_cfg);
     bool reconfigure = false;
     if (strlen((char *)wifi_cfg.sta.ssid) != 0) {
         uart_write_bytes(
-            UART_NUM_0, "Press any key in 3 seconds to reconfigure wifi...",
+            uart_num, "Press any key in 3 seconds to reconfigure wifi...",
             strlen("Press any key in 3 seconds to reconfigure wifi..."));
         char c;
-        if (uart_read_bytes(UART_NUM_0, &c, 1, 3000 / portTICK_PERIOD_MS) > 0) {
+        if (uart_read_bytes(uart_num, &c, 1, 3000 / portTICK_PERIOD_MS) > 0) {
             reconfigure = true;
         }
     } else {
         reconfigure = true;
     }
-    uart_write_bytes(UART_NUM_0, "\n", 1);
+    uart_write_bytes(uart_num, "\n", 1);
     if (reconfigure || strlen((char *)wifi_cfg.sta.ssid) == 0) {
         // printf("Enter SSID: ");
-        uart_write_bytes(UART_NUM_0, "Enter SSID: ", strlen("Enter SSID: "));
-        get_string_from_uart(UART_NUM_0, (char *)wifi_cfg.sta.ssid, 32, true);
-        uart_write_bytes(UART_NUM_0,
+        uart_write_bytes(uart_num, "Enter SSID: ", strlen("Enter SSID: "));
+        get_string_from_uart(uart_num, (char *)wifi_cfg.sta.ssid, 32, true);
+        uart_write_bytes(uart_num,
                          "Enter Password: ", strlen("Enter Password: "));
-        get_string_from_uart(UART_NUM_0, (char *)wifi_cfg.sta.password, 64, false);
+        get_string_from_uart(uart_num, (char *)wifi_cfg.sta.password, 64, false);
         ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
     } else {
-        uart_write_bytes(UART_NUM_0, "\n", 1);
+        uart_write_bytes(uart_num, "\n", 1);
     }
     ESP_ERROR_CHECK(esp_wifi_start());
     ESP_LOGI(TAG, "Connecting to %s", (char *)wifi_cfg.sta.ssid);
@@ -137,9 +136,4 @@ void WifiStation::event_handler(void *arg,
         self->retry_count = 0;
         xEventGroupSetBits(self->wifi_event_group, WIFI_CONNECTED_BIT);
     }
-}
-
-void WifiStation::install_uart() {
-    const int uart_buffer_size = 1024 * 2;
-    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_0, uart_buffer_size, uart_buffer_size, 10, NULL, 0));
 }

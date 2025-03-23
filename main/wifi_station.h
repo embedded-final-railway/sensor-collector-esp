@@ -4,6 +4,7 @@
 #include "esp_event.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
+#include "driver/uart.h"
 
 class WifiStation {
  private:
@@ -18,7 +19,6 @@ class WifiStation {
  public:
   WifiStation();
   void init();
-  esp_err_t connect();
-  void install_uart();
+  esp_err_t connect(uart_port_t uart_num);
   esp_err_t connect(const char *ssid, const char *password);
 };
