@@ -59,6 +59,7 @@ MPU6050_data MPU6050::read() {
     uint8_t raw_data[14];
     uint8_t reg_addr = MPU6050_ACCEL_REG;
     i2c_master_transmit_receive(dev_handle, &reg_addr, 1, raw_data, 14, 1000);
+    // Don't attempt to memcpy directly because ESP32 is little-endian
     int16_t accel_x = raw_data[0] << 8 | raw_data[1];
     int16_t accel_y = raw_data[2] << 8 | raw_data[3];
     int16_t accel_z = raw_data[4] << 8 | raw_data[5];
