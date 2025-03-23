@@ -43,7 +43,7 @@ class MPU6050 {
 
   public:
     MPU6050();
-    void init();
+    void init(i2c_master_bus_handle_t &bus_handle);
     void raw_read(uint8_t reg_addr, uint8_t *data, uint8_t len);
     void raw_write(uint8_t reg_addr, uint8_t &data, uint8_t len);
     MPU6050_data read();
