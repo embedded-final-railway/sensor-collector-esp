@@ -20,6 +20,7 @@ struct Data {
     GY_NEO6MV2_data gps_data;
 };
 
+static StaticQueue_t xStaticQueue;
 QueueHandle_t data_queue;
 
 void vReadMPU6050(void *pvParameters) {
@@ -42,12 +43,14 @@ void vReadGPS(void *pvParameters) {
         Data data;
         data.gps_data = gps.read();
         // xQueueSend(data_queue, &data, portMAX_DELAY);
-        ESP_LOGI("Got GPS data", "Latitude: %f, Longitude: %f", 
-            data.gps_data.position.latitude.value_or(0.0), 
-            data.gps_data.position.longitude.value_or(0.0));
+        ESP_LOGI("Got GPS data", "Latitude: %f, Longitude: %f",
+                 data.gps_data.position.latitude,
+                 data.gps_data.position.longitude);
         xTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
+
+uint8_t data_queue_array[3000 * sizeof(Data)];
 
 extern "C" void app_main(void) {
     print_chip_info();
@@ -83,7 +86,7 @@ extern "C" void app_main(void) {
     gps.init(UART_NUM_1);
     ESP_LOGI("Size of Data", "%d", sizeof(Data));
     ESP_LOGW("app_main", "RAM left %lu", esp_get_free_heap_size());
-    data_queue = xQueueCreate(3000, sizeof(Data));
+    data_queue = xQueueCreateStatic(3000, sizeof(Data), data_queue_array, &xStaticQueue);
     if (data_queue == NULL) {
         ESP_LOGE("app_main", "Failed to create data queue");
         return;
