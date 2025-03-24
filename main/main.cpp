@@ -4,16 +4,50 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "gy_neo6mv2.h"
 #include "mpu6050.h"
-#include "soc/gpio_sig_map.h"
 #include "utils.h"
 #include "wifi_station.h"
 #include <string.h>
-#include "gy_neo6mv2.h"
 
 WifiStation station;
 MPU6050 mpu;
 GY_NEO6MV2 gps;
+
+struct Data {
+    MPU6050_data mpu_data;
+    GY_NEO6MV2_data gps_data;
+};
+
+QueueHandle_t data_queue;
+
+void vReadMPU6050(void *pvParameters) {
+    Data data;
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(1);
+    while (true) {
+        Data data;
+        data.mpu_data = mpu.read();
+        xQueueSend(data_queue, &data, portMAX_DELAY);
+        xTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
+}
+
+void vReadGPS(void *pvParameters) {
+    Data data;
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(1);
+    while (true) {
+        Data data;
+        data.gps_data = gps.read();
+        // xQueueSend(data_queue, &data, portMAX_DELAY);
+        ESP_LOGI("Got GPS data", "Latitude: %f, Longitude: %f", 
+            data.gps_data.position.latitude.value_or(0.0), 
+            data.gps_data.position.longitude.value_or(0.0));
+        xTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
+}
 
 extern "C" void app_main(void) {
     print_chip_info();
@@ -46,25 +80,14 @@ extern "C" void app_main(void) {
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_1, &gps_uart_config));
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_1, GPIO_NUM_18, GPIO_NUM_19, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
     uart_driver_install(UART_NUM_1, uart_buffer_size, uart_buffer_size, 10, NULL, 0);
-    // gpio_dump_io_configuration(stdout, SOC_GPIO_VALID_GPIO_MASK);
     gps.init(UART_NUM_1);
-    while (true) {
-        char buffer[1000];
-        uart_write_bytes(UART_NUM_0, "Enter command: ", sizeof("Enter command: "));
-        get_string_from_uart(UART_NUM_0, buffer, sizeof(buffer), true);
-        gps.send_command((uint8_t *)buffer, strlen(buffer));
-        int read_bytes = uart_read_bytes(UART_NUM_1, (uint8_t *)buffer, sizeof(buffer), 100 / portTICK_PERIOD_MS);
-        if (read_bytes > 0) {
-            buffer[read_bytes] = '\0';
-            if (buffer[0] == '$') {
-                ESP_LOGI("GPS", "NMEA: %s", buffer);
-            } else if (buffer[0] == 0xB5 && buffer[1] == 0x62) {
-                char str[100];
-                gps.bytes_array_to_hex_string((uint8_t *)buffer, read_bytes, str);
-                ESP_LOGI("GPS", "UBX: %s", str);
-            } else {
-                ESP_LOGI("GPS", "Unknown: %s", buffer);
-            }
-        }
+    ESP_LOGI("Size of Data", "%d", sizeof(Data));
+    ESP_LOGW("app_main", "RAM left %lu", esp_get_free_heap_size());
+    data_queue = xQueueCreate(3000, sizeof(Data));
+    if (data_queue == NULL) {
+        ESP_LOGE("app_main", "Failed to create data queue");
+        return;
     }
+    xTaskCreatePinnedToCore(vReadMPU6050, "ReadMPU6050", 4096, NULL, 5, NULL, 1);
+    xTaskCreatePinnedToCore(vReadGPS, "ReadGPS", 4096, NULL, 5, NULL, 1);
 }
