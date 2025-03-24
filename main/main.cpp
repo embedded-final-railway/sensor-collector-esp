@@ -20,32 +20,32 @@ struct Data {
     GY_NEO6MV2_data gps_data;
 };
 
-static StaticQueue_t xStaticQueue;
-QueueHandle_t data_queue;
+Data data;
 
 void vReadMPU6050(void *pvParameters) {
-    Data data;
     TickType_t xLastWakeTime = xTaskGetTickCount();
     const TickType_t xFrequency = pdMS_TO_TICKS(1);
     while (true) {
         Data data;
         data.mpu_data = mpu.read();
-        xQueueSend(data_queue, &data, portMAX_DELAY);
         xTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
 
 void vReadGPS(void *pvParameters) {
-    Data data;
     TickType_t xLastWakeTime = xTaskGetTickCount();
     const TickType_t xFrequency = pdMS_TO_TICKS(1);
     while (true) {
         Data data;
         data.gps_data = gps.read();
         // xQueueSend(data_queue, &data, portMAX_DELAY);
-        ESP_LOGI("Got GPS data", "Latitude: %f, Longitude: %f",
-                 data.gps_data.position.latitude,
-                 data.gps_data.position.longitude);
+        if (data.gps_data.position.latitude.has_value() && data.gps_data.position.longitude.has_value()) {
+            ESP_LOGI("Got GPS data", "Latitude: %f, Longitude: %f",
+                     data.gps_data.position.latitude.value(),
+                     data.gps_data.position.longitude.value());
+        } else {
+            ESP_LOGI("Got GPS data", "GPS data not available");
+        }
         xTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
@@ -86,11 +86,6 @@ extern "C" void app_main(void) {
     gps.init(UART_NUM_1);
     ESP_LOGI("Size of Data", "%d", sizeof(Data));
     ESP_LOGW("app_main", "RAM left %lu", esp_get_free_heap_size());
-    data_queue = xQueueCreateStatic(3000, sizeof(Data), data_queue_array, &xStaticQueue);
-    if (data_queue == NULL) {
-        ESP_LOGE("app_main", "Failed to create data queue");
-        return;
-    }
     xTaskCreatePinnedToCore(vReadMPU6050, "ReadMPU6050", 4096, NULL, 5, NULL, 1);
-    xTaskCreatePinnedToCore(vReadGPS, "ReadGPS", 4096, NULL, 5, NULL, 1);
+    xTaskCreatePinnedToCore(vReadGPS, "ReadGPS", 4096, NULL, 6, NULL, 1);
 }

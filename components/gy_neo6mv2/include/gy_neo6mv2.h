@@ -5,15 +5,16 @@
 #include <string>
 
 struct GY_NEO6MV2_data {
-  struct position {
-      double latitude;
-      double longitude;
-  } position;
-  struct time {
-      uint8_t hours;
-      uint8_t minutes;
-      uint8_t seconds;
-  } time;
+    struct position {
+        std::optional<double> latitude;
+        std::optional<double> longitude;
+    } position;
+    struct time {
+        std::optional<uint8_t> hours;
+        std::optional<uint8_t> minutes;
+        std::optional<uint8_t> seconds;
+    } time;
+
 };
 
 class GY_NEO6MV2 {

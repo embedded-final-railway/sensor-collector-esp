@@ -143,62 +143,72 @@ GY_NEO6MV2_data GY_NEO6MV2::read() {
 
 GY_NEO6MV2_data GY_NEO6MV2::parse_GPGLL(const char *buffer) {
     GY_NEO6MV2_data data;
+    std::string sentence(buffer);
+    auto tokens = split(sentence, ',');
 
-    // The expected NMEA sentence format is:
-    // $GPGLL,<lat>,<N/S>,<lon>,<E/W>,<hhmmss.ss>,<status>,<mode>*<checksum>
-    //
-    // Example: "$GPGLL,4717.11634,N,00833.91297,E,124923.00,A,A*6E"
-    //
-    // We'll parse the latitude string, latitude direction,
-    // longitude string, longitude direction, and the time string.
-
-    char lat_str[16]     = {0};
-    char lon_str[16]     = {0};
-    char time_str[16]    = {0};
-    char lat_dir        = 0;
-    char lon_dir        = 0;
+    // Expected NMEA tokens:
+    //   tokens[0] : "$GPGLL"
+    //   tokens[1] : latitude (ddmm.mmmm) - optional
+    //   tokens[2] : latitude direction (N/S)
+    //   tokens[3] : longitude (dddmm.mmmm) - optional
+    //   tokens[4] : longitude direction (E/W)
+    //   tokens[5] : time (hhmmss.ss) - optional
+    //   tokens[6] : status (e.g., A/V)
+    //   tokens[7] : mode and checksum (optional)
     
-    // Use sscanf to extract the required fields:
-    // We discard other fields since they are not needed.
-    // The format string reads the sentence parts by splitting on commas.
-    sscanf(buffer, "$GPGLL,%15[^,],%c,%15[^,],%c,%15[^,]", 
-           lat_str, &lat_dir, lon_str, &lon_dir, time_str);
-
-    // Convert latitude:
-    // NMEA format for latitude is ddmm.mmmm. So first two digits are degrees,
-    // and the remaining are minutes.
-    double lat_val = static_cast<double>(atof(lat_str));
-    int lat_degrees = static_cast<int>(lat_val / 100);
-    double lat_minutes = lat_val - (lat_degrees * 100);
-    data.position.latitude = lat_degrees + (lat_minutes / 60.0f);
-    if(lat_dir == 'S') {
-        data.position.latitude = -data.position.latitude;
+    // Process latitude if available.
+    if (tokens.size() >= 2 && !tokens[1].empty()) {
+        double lat_val = std::atof(tokens[1].c_str());
+        // ddmm.mmmm: first 2 digits are degrees.
+        int lat_degrees = static_cast<int>(lat_val / 100);
+        double lat_minutes = lat_val - (lat_degrees * 100);
+        double lat_decimal = lat_degrees + (lat_minutes / 60.0);
+        if (tokens.size() >= 3 && !tokens[2].empty() && tokens[2][0] == 'S') {
+            lat_decimal = -lat_decimal;
+        }
+        data.position.latitude = lat_decimal;
+    } else {
+        data.position.latitude = std::nullopt;
     }
 
-    // Convert longitude:
-    // NMEA format for longitude is dddmm.mmmm. So first three digits are degrees.
-    double lon_val = static_cast<double>(atof(lon_str));
-    int lon_degrees = static_cast<int>(lon_val / 100);
-    double lon_minutes = lon_val - (lon_degrees * 100);
-    data.position.longitude = lon_degrees + (lon_minutes / 60.0f);
-    if(lon_dir == 'W') {
-        data.position.longitude = -data.position.longitude;
+    // Process longitude if available.
+    if (tokens.size() >= 4 && !tokens[3].empty()) {
+        double lon_val = std::atof(tokens[3].c_str());
+        // dddmm.mmmm: first 3 digits are degrees.
+        int lon_degrees = static_cast<int>(lon_val / 100);
+        double lon_minutes = lon_val - (lon_degrees * 100);
+        double lon_decimal = lon_degrees + (lon_minutes / 60.0);
+        if (tokens.size() >= 5 && !tokens[4].empty() && tokens[4][0] == 'W') {
+            lon_decimal = -lon_decimal;
+        }
+        data.position.longitude = lon_decimal;
+    } else {
+        data.position.longitude = std::nullopt;
     }
 
-    // Extract time fields from hhmmss.ss (we ignore the fractional part)
-    char hours_str[3]   = {0};
-    char minutes_str[3] = {0};
-    char seconds_str[3] = {0};
-
-    // Ensure that the time string length is at least 6 characters.
-    if(strlen(time_str) >= 6) {
-        strncpy(hours_str, time_str, 2);
-        strncpy(minutes_str, time_str + 2, 2);
-        strncpy(seconds_str, time_str + 4, 2);
+    // Process time if available.
+    if (tokens.size() >= 6 && !tokens[5].empty()) {
+        std::string time_str = tokens[5];
+        if (time_str.size() >= 6) {  // Ensure at least hhmmss is available
+            char hours_str[3]   = {0};
+            char minutes_str[3] = {0};
+            char seconds_str[3] = {0};
+            std::strncpy(hours_str, time_str.c_str(), 2);
+            std::strncpy(minutes_str, time_str.c_str() + 2, 2);
+            std::strncpy(seconds_str, time_str.c_str() + 4, 2);
+            data.time.hours = static_cast<uint8_t>(std::atoi(hours_str));
+            data.time.minutes = static_cast<uint8_t>(std::atoi(minutes_str));
+            data.time.seconds = static_cast<uint8_t>(std::atoi(seconds_str));
+        } else {
+            data.time.hours   = std::nullopt;
+            data.time.minutes = std::nullopt;
+            data.time.seconds = std::nullopt;
+        }
+    } else {
+        data.time.hours   = std::nullopt;
+        data.time.minutes = std::nullopt;
+        data.time.seconds = std::nullopt;
     }
-    data.time.hours   = static_cast<uint8_t>(atoi(hours_str));
-    data.time.minutes = static_cast<uint8_t>(atoi(minutes_str));
-    data.time.seconds = static_cast<uint8_t>(atoi(seconds_str));
 
     return data;
 }
