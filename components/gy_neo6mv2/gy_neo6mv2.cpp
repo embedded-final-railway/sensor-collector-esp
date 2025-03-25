@@ -5,28 +5,19 @@
 #include <cstdlib>
 #include <cstring>
 #include <iomanip>
+#include <optional>
 #include <sstream>
 #include <stdio.h>
 #include <string>
-#include <optional>
-#include <string>
-#include <sstream>
 #include <vector>
-#include <cstdlib>
-#include <cstring>
 
 GY_NEO6MV2::GY_NEO6MV2() {
 }
 
 void GY_NEO6MV2::init(uart_port_t uart_num) {
     this->uart_num = uart_num;
-    const char *commands[] = {
-        "$PUBX,40,GLL,0,1,0,0,0,0",
-        "$PUBX,40,GSV,0,0,0,0,0,0",
-        "$PUBX,40,GSA,0,0,0,0,0,0",
-        "$PUBX,40,GGA,0,0,0,0,0,0",
-        "$PUBX,40,VTG,0,0,0,0,0,0",
-        "$PUBX,40,RMC,0,0,0,0,0,0"};
+    const char *commands[] = {"$PUBX,40,GLL,0,1,0,0,0,0", "$PUBX,40,GSV,0,0,0,0,0,0", "$PUBX,40,GSA,0,0,0,0,0,0",
+                              "$PUBX,40,GGA,0,0,0,0,0,0", "$PUBX,40,VTG,0,0,0,0,0,0", "$PUBX,40,RMC,0,0,0,0,0,0"};
 
     for (auto &cmd : commands) {
         send_command((uint8_t *)cmd, strlen(cmd));
@@ -41,11 +32,11 @@ void GY_NEO6MV2::send_command(uint8_t *cmd, size_t len) {
     if (cmd[0] == '$' && len > 1) {
         // NMEA protocol
         len = NMEA::add_checksum(payload, len);
-        if (esp_log_level_get(TAG) >= ESP_LOG_INFO) {
+        if (esp_log_level_get(TAG) >= ESP_LOG_DEBUG) {
             char hex_string[100];
             memcpy(hex_string, payload, len);
             hex_string[len - 2] = '\0';
-            ESP_LOGI(TAG, "Sending NMEA command: %s", hex_string);
+            ESP_LOGD(TAG, "Sending NMEA command: %s", hex_string);
         }
         uart_write_bytes(this->uart_num, (const char *)payload, len);
     } else if (strncasecmp((const char *)cmd, "B562", 4) == 0 && len > 6) {
@@ -53,10 +44,10 @@ void GY_NEO6MV2::send_command(uint8_t *cmd, size_t len) {
         memset(&payload[len], 0, 2);
         len = hex_string_to_bytes((const char *)cmd, payload);
         len = UBX::add_checksum(payload, len);
-        if (esp_log_level_get(TAG) >= ESP_LOG_INFO) {
+        if (esp_log_level_get(TAG) >= ESP_LOG_DEBUG) {
             char hex_string[100];
             bytes_array_to_hex_string(payload, len, hex_string);
-            ESP_LOGI(TAG, "Sending UBX command: %s", hex_string);
+            ESP_LOGD(TAG, "Sending UBX command: %s", hex_string);
         }
         uart_write_bytes(this->uart_num, (const char *)payload, len);
     } else {
@@ -132,7 +123,7 @@ GY_NEO6MV2_data GY_NEO6MV2::read() {
     GY_NEO6MV2_data data;
     while (true) {
         obtain_payload(buffer, sizeof(buffer));
-        ESP_LOGI(TAG, "Received: %s", buffer);
+        ESP_LOGD(TAG, "Received: %s", buffer);
         if (strncmp((const char *)buffer, "$GPGLL", 6) == 0) {
             data = parse_GPGLL((const char *)buffer);
             break;
@@ -155,7 +146,7 @@ GY_NEO6MV2_data GY_NEO6MV2::parse_GPGLL(const char *buffer) {
     //   tokens[5] : time (hhmmss.ss) - optional
     //   tokens[6] : status (e.g., A/V)
     //   tokens[7] : mode and checksum (optional)
-    
+
     // Process latitude if available.
     if (tokens.size() >= 2 && !tokens[1].empty()) {
         double lat_val = std::atof(tokens[1].c_str());
@@ -189,8 +180,8 @@ GY_NEO6MV2_data GY_NEO6MV2::parse_GPGLL(const char *buffer) {
     // Process time if available.
     if (tokens.size() >= 6 && !tokens[5].empty()) {
         std::string time_str = tokens[5];
-        if (time_str.size() >= 6) {  // Ensure at least hhmmss is available
-            char hours_str[3]   = {0};
+        if (time_str.size() >= 6) { // Ensure at least hhmmss is available
+            char hours_str[3] = {0};
             char minutes_str[3] = {0};
             char seconds_str[3] = {0};
             std::strncpy(hours_str, time_str.c_str(), 2);
@@ -200,12 +191,12 @@ GY_NEO6MV2_data GY_NEO6MV2::parse_GPGLL(const char *buffer) {
             data.time.minutes = static_cast<uint8_t>(std::atoi(minutes_str));
             data.time.seconds = static_cast<uint8_t>(std::atoi(seconds_str));
         } else {
-            data.time.hours   = std::nullopt;
+            data.time.hours = std::nullopt;
             data.time.minutes = std::nullopt;
             data.time.seconds = std::nullopt;
         }
     } else {
-        data.time.hours   = std::nullopt;
+        data.time.hours = std::nullopt;
         data.time.minutes = std::nullopt;
         data.time.seconds = std::nullopt;
     }

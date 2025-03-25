@@ -7,9 +7,9 @@
 #include "driver/i2c_master.h"
 #include "esp_err.h"
 #include "esp_log.h"
-#include "math.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "math.h"
 
 static const uint8_t MPU6050_SELF_TEST_REG = 0x0D;
 static const uint8_t MPU6050_ADDR = 0x68;
@@ -100,13 +100,11 @@ void MPU6050::set_gyro_scale_range(uint8_t range) {
     gyro_scale_factor = 16.4f * (1 << (3 - gyro_scale_range));
 }
 
-void MPU6050::raw_read(uint8_t reg_addr, uint8_t *data,
-                       uint8_t len) {
+void MPU6050::raw_read(uint8_t reg_addr, uint8_t *data, uint8_t len) {
     i2c_master_transmit_receive(dev_handle, &reg_addr, 1, data, len, 1000);
 }
 
-void MPU6050::raw_write(uint8_t reg_addr, uint8_t &data,
-                        uint8_t len) {
+void MPU6050::raw_write(uint8_t reg_addr, uint8_t &data, uint8_t len) {
     uint8_t buffer[len + 1];
     buffer[0] = reg_addr;
     memcpy(&buffer[1], &data, len);

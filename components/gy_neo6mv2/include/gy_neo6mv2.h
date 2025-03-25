@@ -1,8 +1,8 @@
 #pragma once
 #include "driver/uart.h"
 #include <optional>
-#include <vector>
 #include <string>
+#include <vector>
 
 struct GY_NEO6MV2_data {
     struct position {
@@ -14,7 +14,6 @@ struct GY_NEO6MV2_data {
         std::optional<uint8_t> minutes;
         std::optional<uint8_t> seconds;
     } time;
-
 };
 
 class GY_NEO6MV2 {
@@ -26,7 +25,7 @@ class GY_NEO6MV2 {
     uint8_t obtain_payload(uint8_t *buffer, int len);
     GY_NEO6MV2_data parse_GPGLL(const char *buffer);
     static std::vector<std::string> split(const std::string &s, char delimiter);
-    
+
   public:
     GY_NEO6MV2();
     int bytes_array_to_hex_string(uint8_t *bytes, int len, char *hex_string);
@@ -39,10 +38,10 @@ namespace NMEA {
 int add_checksum(uint8_t *data, int len);
 bool verify_checksum(uint8_t *data, int len);
 uint8_t calculate_checksum(uint8_t *data, int len);
-}
+} // namespace NMEA
 
 namespace UBX {
 int add_checksum(uint8_t *data, int len);
 bool verify_checksum(uint8_t *data, int len);
 uint16_t calculate_checksum(uint8_t *data, int len);
-}
+} // namespace UBX
