@@ -5,4 +5,6 @@
 cmake_minimum_required(VERSION 3.5)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(EVR sensor collector)
+project(EVR_sensor_collector)
+
+target_add_binary_data(${PROJECT_NAME}.elf "main/fullchain.pem" TEXT)
