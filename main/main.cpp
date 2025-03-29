@@ -38,8 +38,16 @@ void vReadMPU6050(void *pvParameters) {
     struct timeval tv;
 
     while (true) {
-        char *str = (char *)malloc(75 * 500);
-        uint16_t pos = 0;
+        char *str = (char *)malloc(100 * 500);
+        if (str == NULL) {
+            ESP_LOGE("vReadMPU6050", "Failed to allocate memory for string");
+            ESP_LOGI("vReadMPU6050", "Free heap size: %u", heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+            continue;
+        } else {
+            ESP_LOGD("vReadMPU6050", "Allocated memory for string, free heap size: %u", heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+        }
+        uint64_t pos = 0;
         long long int start = esp_timer_get_time();
         for (int i = 0; i < 500; i++) {
             gettimeofday(&tv, NULL);
@@ -78,7 +86,7 @@ void vUploadFile(void *pvParameter) {
     static esp_http_client_config_t config = {
         .url = url,
         .method = HTTP_METHOD_POST,
-        .timeout_ms = 800,
+        // .timeout_ms = 800,
         .event_handler = NULL,
     };
     while (true) {
@@ -171,8 +179,10 @@ extern "C" void app_main(void) {
     esp_sntp_init();
     wait_for_time_sync();
     ESP_LOGW("app_main", "RAM left %lu", esp_get_free_heap_size());
+    static StaticTask_t xTaskBuffer1, xTaskBuffer2, xTaskBuffer3;
+    static StackType_t xStack1[4096], xStack2[4096], xStack3[4096];
 
-    xTaskCreatePinnedToCore(vReadMPU6050, "ReadMPU6050", 4096, NULL, 5, NULL, 1);
-    xTaskCreatePinnedToCore(vReadGPS, "ReadGPS", 4096, NULL, 4, NULL, 1);
-    xTaskCreatePinnedToCore(vUploadFile, "UploadFile", 4096, NULL, 5, NULL, 0);
+    xTaskCreateStaticPinnedToCore(vReadMPU6050, "ReadMPU6050", 4096, NULL, 5, xStack1, &xTaskBuffer1, 1);
+    xTaskCreateStaticPinnedToCore(vReadGPS, "ReadGPS", 4096, NULL, 4, xStack2, &xTaskBuffer2, 1);
+    xTaskCreateStaticPinnedToCore(vUploadFile, "UploadFile", 4096, NULL, 5, xStack3, &xTaskBuffer3, 0);
 }
