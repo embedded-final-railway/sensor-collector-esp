@@ -122,7 +122,13 @@ GY_NEO6MV2_data GY_NEO6MV2::read() {
     GY_NEO6MV2_data data;
     while (true) {
         obtain_payload(buffer, sizeof(buffer));
-        ESP_LOGD(TAG, "Received: %s", buffer);
+        if (strncmp((const char *)buffer, "$GPGLL", 6) == 0) {
+            ESP_LOGD(TAG, "Received: %s", buffer);
+        } else {
+            uint8_t str[100];
+            bytes_array_to_hex_string(buffer, strlen((const char *)buffer), (char *)str);
+            ESP_LOGD(TAG, "Received: %s", str);
+        }
         if (strncmp((const char *)buffer, "$GPGLL", 6) == 0) {
             data = parse_GPGLL((const char *)buffer);
             break;
