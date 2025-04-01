@@ -12,6 +12,7 @@
 #include "mpu6050.h"
 #include "utils.h"
 #include "wifi_station.h"
+#include <cJSON.h>
 #include <string.h>
 
 WifiStation station;
@@ -34,22 +35,23 @@ extern const uint8_t pem_end[] asm("_binary_fullchain_pem_end");
 
 void vReadMPU6050(void *pvParameters) {
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(2);
+    const TickType_t xFrequency = pdMS_TO_TICKS(5);
     struct timeval tv;
 
     while (true) {
-        char *str = (char *)malloc(100 * 500);
+        char *str = (char *)malloc(100 * 200);
         if (str == NULL) {
             ESP_LOGE("vReadMPU6050", "Failed to allocate memory for string");
             ESP_LOGI("vReadMPU6050", "Free heap size: %u", heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
+            // vTaskDelay(1000 / portTICK_PERIOD_MS);
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
             continue;
         } else {
             ESP_LOGD("vReadMPU6050", "Allocated memory for string, free heap size: %u", heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
         }
         uint64_t pos = 0;
         long long int start = esp_timer_get_time();
-        for (int i = 0; i < 500; i++) {
+        for (int i = 0; i < 200; i++) {
             gettimeofday(&tv, NULL);
             data.mpu_data = mpu.read();
             std::string latStr = data.gps_data.position.latitude.has_value() ? std::to_string(data.gps_data.position.latitude.value()) : "";
@@ -80,25 +82,69 @@ void vReadGPS(void *pvParameters) {
     }
 }
 
-void vUploadFile(void *pvParameter) {
-    // const char *const url = "https://linux-vm-southeastasia-2.southeastasia.cloudapp.azure.com/upload";
-    const char *const url = "http://192.168.1.102:8080/upload";
+void vLED(void *pvParameter) {
+    const char *const url = "https://linux-vm-southeastasia-2.southeastasia.cloudapp.azure.com/api/lock";
+    // const char *const url = "http://192.168.1.102:8080/upload";
     static esp_http_client_config_t config = {
         .url = url,
+        .cert_pem = (const char *)pem_start,
+        .method = HTTP_METHOD_GET,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    while (true) {
+        vTaskDelay(pdTICKS_TO_MS(1000));
+        esp_err_t err = esp_http_client_open(client, 0);
+        int content_length = esp_http_client_fetch_headers(client);
+        static char buffer[30] = {};
+        bzero(buffer, sizeof(buffer));
+        int read_len = esp_http_client_read_response(client, buffer, sizeof(buffer) - 1);
+        
+        // ESP_LOGI("vLED", "Read length: %d", read_len);
+        buffer[read_len] = '\0'; // Null-terminate JSON
+
+        // Parse JSON response
+        // ESP_LOGI("vLED", "Received JSON: %s", buffer);
+        cJSON *json = cJSON_Parse(buffer);
+        if (json == NULL) {
+            ESP_LOGE("vLED", "Error parsing JSON");
+            continue;
+        }
+
+        cJSON *locked = cJSON_GetObjectItemCaseSensitive(json, "locked");
+        if (cJSON_IsBool(locked)) {
+            bool lock_state = cJSON_IsTrue(locked);
+            if (lock_state) {
+                ESP_LOGD("vLED", "Locked");
+                gpio_set_level(GPIO_NUM_2, 1);
+            } else {
+                ESP_LOGD("vLED", "Unlocked");
+                gpio_set_level(GPIO_NUM_2, 0);
+            }
+        }
+
+        cJSON_Delete(json);
+    }
+}
+
+void vUpload(void *pvParameter) {
+    const char *const url = "https://linux-vm-southeastasia-2.southeastasia.cloudapp.azure.com/api/upload";
+    // const char *const url = "http://192.168.1.102:8080/upload";
+    static esp_http_client_config_t config = {
+        .url = url,
+        .cert_pem = (const char *)pem_start,
         .method = HTTP_METHOD_POST,
         // .timeout_ms = 800,
         .event_handler = NULL,
     };
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    esp_http_client_set_header(client, "Content-Type", "application/octet-stream");
     while (true) {
         char *str = NULL;
         xQueueReceive(data_queue, &str, portMAX_DELAY);
         int len = strlen(str);
-        esp_http_client_handle_t client = esp_http_client_init(&config);
-        esp_http_client_set_header(client, "Content-Type", "application/octet-stream");
         esp_http_client_open(client, len);
         esp_http_client_write(client, str, len);
         esp_err_t err = esp_http_client_perform(client);
-        esp_http_client_cleanup(client);
         free(str);
     }
 }
@@ -179,10 +225,17 @@ extern "C" void app_main(void) {
     esp_sntp_init();
     wait_for_time_sync();
     ESP_LOGW("app_main", "RAM left %lu", esp_get_free_heap_size());
-    static StaticTask_t xTaskBuffer1, xTaskBuffer2, xTaskBuffer3;
-    static StackType_t xStack1[4096], xStack2[4096], xStack3[4096];
-
+    static StaticTask_t xTaskBuffer1, xTaskBuffer2, xTaskBuffer3, xTaskBuffer4;
+    static StackType_t xStack1[4096], xStack2[4096], xStack3[4096], xStack4[4096];
+    gpio_config_t io_conf = {};
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pin_bit_mask = (1ULL << GPIO_NUM_2);
+    io_conf.pull_down_en = GPIO_PULLDOWN_ENABLE;
+    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    gpio_config(&io_conf);
     xTaskCreateStaticPinnedToCore(vReadMPU6050, "ReadMPU6050", 4096, NULL, 5, xStack1, &xTaskBuffer1, 1);
     xTaskCreateStaticPinnedToCore(vReadGPS, "ReadGPS", 4096, NULL, 4, xStack2, &xTaskBuffer2, 1);
-    xTaskCreateStaticPinnedToCore(vUploadFile, "UploadFile", 4096, NULL, 5, xStack3, &xTaskBuffer3, 0);
+    xTaskCreateStaticPinnedToCore(vUpload, "UploadFile", 4096, NULL, 5, xStack3, &xTaskBuffer3, 0);
+    xTaskCreateStaticPinnedToCore(vLED, "vLED", 4096, NULL, 4, xStack4, &xTaskBuffer4, 0);
 }
